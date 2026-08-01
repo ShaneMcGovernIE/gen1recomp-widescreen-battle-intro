@@ -86,6 +86,90 @@ return function(mod)
     return result
   end
 
+  -- Script-started battles -- the overworld spawn mod's touch-to-battle
+  -- path, scripted trainer fights (the rivals, Jessie & James) and the
+  -- static-encounter script -- push the battle straight onto the stack
+  -- with no transition, so the intro never plays.  Give every one of them
+  -- the same transition the engine's pushBattle uses (flash + circle wipe
+  -- for wild spawns, spiral / shrink / split wipes for trainers), so the
+  -- intro effect plays fullscreen no matter what triggered the battle.
+  -- The wipe selection still follows the vanilla bits.
+  local Commands = require("src.script.Commands")
+  local originalStartBattle = Commands.start_battle
+  function Commands.start_battle(ctx, kind, a, b)
+    local BattleState = require("src.battle.BattleState")
+    local BattleTransition = require("src.render.BattleTransition")
+    local runner = ctx.runner
+    local battle
+    if kind == "wild" then
+      battle = BattleState.newWild(ctx.game, a, b)
+    else
+      battle = BattleState.newTrainer(ctx.game, a, b)
+    end
+    battle.onFinish = function(result)
+      ctx.lastBattleResult = result
+      ctx.lastCheck = result == "win"
+      if ctx.overworld then
+        if result == "win" then
+          ctx.afterScript = ctx.afterScript or {}
+          table.insert(ctx.afterScript, function()
+            ctx.overworld:afterBattle(result, battle)
+          end)
+        else
+          ctx.overworld:afterBattle(result, battle)
+        end
+      end
+      runner:resume()
+    end
+    local lead
+    for _, mon in ipairs(ctx.game.save.party) do
+      if mon.hp > 0 then lead = mon break end
+    end
+    local enemyLevel = battle.enemy and battle.enemy.mon
+        and battle.enemy.mon.level or 0
+    local overworld = ctx.overworld
+    local dungeon = overworld
+        and type(overworld.isDungeonTransitionMap) == "function"
+        and overworld:isDungeonTransitionMap() or false
+    ctx.game.stack:push(BattleTransition.new(ctx.game, function()
+      ctx.game.stack:push(battle)
+    end, {
+      trainer = kind == "trainer",
+      stronger = lead ~= nil and enemyLevel >= lead.level + 3,
+      dungeon = dungeon,
+    }))
+    runner:yield()
+  end
+
+  -- The Viridian catch tutorial (Commands.old_man_demo) also pushes its
+  -- demo battle without a transition; give it the wild intro too.
+  local originalOldManDemo = Commands.old_man_demo
+  function Commands.old_man_demo(ctx)
+    local BattleState = require("src.battle.BattleState")
+    local BattleTransition = require("src.render.BattleTransition")
+    local runner = ctx.runner
+    local om = ctx.game.data.field.oldManBattle or { species = "WEEDLE", level = 5 }
+    local battle = BattleState.newWild(ctx.game, om.species, om.level)
+    battle:makeOldManDemo()
+    battle.onFinish = function() runner:resume() end
+    local lead
+    for _, mon in ipairs(ctx.game.save.party) do
+      if mon.hp > 0 then lead = mon break end
+    end
+    local overworld = ctx.overworld
+    local dungeon = overworld
+        and type(overworld.isDungeonTransitionMap) == "function"
+        and overworld:isDungeonTransitionMap() or false
+    ctx.game.stack:push(BattleTransition.new(ctx.game, function()
+      ctx.game.stack:push(battle)
+    end, {
+      trainer = false,
+      stronger = lead ~= nil and (tonumber(om.level) or 5) >= lead.level + 3,
+      dungeon = dungeon,
+    }))
+    runner:yield()
+  end
+
   -- exposed for the headless test suite
   mod.exports.flashFor = flashFor
   mod.exports.tickFlash = function()

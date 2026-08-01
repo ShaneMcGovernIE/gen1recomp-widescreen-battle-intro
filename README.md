@@ -7,8 +7,16 @@ flash across the entire window.
 
 The flash only plays for the circle wipes, which are exactly those two
 cases.  Trainer battles use spiral / shrink / split wipes that have no
-flash and were already fullscreen via the engine's own cascade, so this
-mod does not change them.
+flash and were already fullscreen via the engine's own cascade.
+
+## Every battle trigger
+
+Some battles start with no transition at all: overworld spawns (mods that
+run `start_battle "wild"`, like Wilds of Kanto), scripted trainer fights
+(the rivals, Jessie & James) and the Viridian catch tutorial.  This mod
+gives every one of them the standard intro — the flash + circle wipe for
+wild battles, the spiral / shrink / split wipes for trainers — so the
+fullscreen intro effect plays no matter what triggered the battle.
 
 ## Try it
 

@@ -7,10 +7,11 @@ return {
   differences = {
     changed = {
       "the battle transition's flash phase — the circle wipes for wild encounters and stronger foes — now plays across the whole window instead of the centered 160x144 square",
+      "battles that used to skip the intro entirely (overworld spawns, scripted trainer fights, the catch tutorial) now play the standard transition",
     },
     added = {},
     known = {
-      "trainer battles use spiral/shrink/split wipes that have no flash and are already fullscreen via the engine's cascade; this mod does not change them",
+      "scripted trainer battles (the rivals, Jessie & James) now get the spiral/shrink/split wipe they previously skipped; the wipe selection follows the vanilla bits and never flashes",
       "the flash overlay draws over the GBC FX grid while it plays (imperceptible during a fullscreen flash)",
       "wipe and black-hold phases already filled the window via the engine's own cascade; this mod leaves them untouched",
     },
