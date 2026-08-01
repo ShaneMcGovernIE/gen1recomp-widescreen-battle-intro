@@ -1,0 +1,19 @@
+-- Sharing metadata.  Read by tooling and the manager detail pane; never by
+-- the loader's merge.
+return {
+  summary = "Extends the into-battle flash to cover the whole window on non-4:3 displays.",
+  author = "Shane",
+  tags = { "cosmetic", "rendering", "quality-of-life" },
+  differences = {
+    changed = {
+      "the battle transition's flash phase now plays across the whole window instead of the centered 160x144 square (circle / double-circle wipes)",
+    },
+    added = {},
+    known = {
+      "the flash overlay draws over the GBC FX grid while it plays (imperceptible during a fullscreen flash)",
+      "wipe and black-hold phases already filled the window via the engine's own cascade; this mod leaves them untouched",
+    },
+  },
+  credits = {},
+  compat = { engine = ">=0.1.53 <2.0.0", modApi = 2 },
+}

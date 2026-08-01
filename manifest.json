@@ -1,0 +1,15 @@
+{
+  "id": "widescreen_battle_intro",
+  "name": "Widescreen Battle Intro",
+  "version": "1.0.0",
+  "api": 2,
+  "entry": "main.lua",
+  "profile": "content",
+  "category": "VISUAL",
+  "priority": 100,
+  "dependencies": [],
+  "optional_dependencies": [],
+  "conflicts": [],
+  "permissions": ["engine_internals"],
+  "description": "Extends the battle intro's flash effect across the whole window, so on non-4:3 displays it no longer plays inside a centered 4:3 square."
+}
