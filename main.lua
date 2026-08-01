@@ -8,15 +8,16 @@
 -- therefore plays inside a centered square while the frozen overworld
 -- shows around it.
 --
--- This mod extends the flash across the whole window:
---   * wrapping BattleTransition.draw records the shade/alpha the engine is
---     drawing this frame (same step math, same self.t), and
---   * wrapping Renderer.endFrame paints one full-window rect with that
---     shade/alpha after the frame has composited, in screen space.
+-- This mod extends the flash across the whole window by wrapping
+-- Renderer.endFrame and painting one full-window rect with the live
+-- transition's shade/alpha after the frame has composited, in screen
+-- space.  The overlay is state-driven: it asks the state stack whether a
+-- battle transition is in its flash phase right now (a script runner can
+-- push the transition at odd points in the frame, so there is no
+-- draw/endFrame pairing to desync), and the shade math mirrors the
+-- engine's exactly, so it stays frame-locked to the letterbox square.
 --
--- The record is stamped per rendered frame, so once the transition has
--- popped (or on a frame where nothing drew) nothing is painted, and the
--- wipe and black-hold phases are left to the engine's own fullscreen
+-- The wipe and black-hold phases are left to the engine's own fullscreen
 -- cascade untouched.  On a 4:3 window the overlay is the same shade the
 -- letterbox square already shows, so vanilla is unchanged there.
 
@@ -44,34 +45,31 @@ local function flashFor(t)
 end
 
 return function(mod)
-  local recorded = nil -- { shade, alpha, stamp } or nil
-  local frame = 0      -- bumped once per rendered frame by the endFrame wrap
-
-  local originalDraw = BattleTransition.draw
-  function BattleTransition.draw(self)
-    -- record what the engine is about to draw, from its own t, so the
-    -- overlay stays frame-locked to the letterbox flash
-    if self.phase == "flash" then
-      local flash = flashFor(self.t)
-      recorded = flash
-          and { shade = flash.shade, alpha = flash.alpha, stamp = frame }
-          or nil
-    else
-      -- wipe / black-hold: the engine's cascade owns the window
-      recorded = nil
+  -- The overlay is state-driven: every frame's endFrame asks the state
+  -- stack whether a battle transition is in its flash phase right now and
+  -- paints the same shade/alpha over the whole window.  There is no
+  -- draw/endFrame pairing to desync (a script runner can push the
+  -- transition at odd points in the frame, and the flash always matches
+  -- the letterbox square the engine draws).
+  local function activeFlash()
+    local ok, Game = pcall(require, "src.core.Game")
+    local stack = ok and Game and Game.stack
+    if not (stack and stack.states) then return nil end
+    for i = #stack.states, 1, -1 do
+      local state = stack.states[i]
+      -- a battle transition: wipeLen is its marker (warp fades and the
+      -- white flash never carry it)
+      if state and state.phase == "flash" and state.wipeLen then
+        return flashFor(state.t)
+      end
     end
-    return originalDraw(self)
+    return nil
   end
 
   local originalEndFrame = Renderer.endFrame
   function Renderer.endFrame(self, ...)
-    frame = frame + 1
-    local flash = recorded
-    if flash and flash.stamp ~= frame - 1 then
-      flash = nil -- stale: the transition popped since its last draw
-      recorded = nil
-    end
     local result = originalEndFrame(self, ...)
+    local flash = activeFlash()
     if flash then
       local g = love and love.graphics
       if g and g.getDimensions and g.setColor and g.rectangle then
@@ -172,14 +170,5 @@ return function(mod)
 
   -- exposed for the headless test suite
   mod.exports.flashFor = flashFor
-  mod.exports.tickFlash = function()
-    frame = frame + 1
-    local flash = recorded
-    if flash and flash.stamp ~= frame - 1 then
-      flash = nil
-      recorded = nil
-    end
-    return flash
-  end
-  mod.exports.peekRecorded = function() return recorded end
+  mod.exports.activeFlash = activeFlash
 end

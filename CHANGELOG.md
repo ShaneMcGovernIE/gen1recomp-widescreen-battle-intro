@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.1] - 2026-08-01
+
+### Fixed
+
+- The fullscreen flash overlay is now state-driven: it reads the live
+  battle transition from the state stack every frame instead of relying on
+  a draw/endFrame pairing.  Spawn-started battles on outdoor maps (Route 1
+  and 2 with Wilds of Kanto) could leave the flash in the centered
+  letterbox square; the overlay now always covers the whole window while a
+  transition is flashing.
+
 ## [1.2.0] - 2026-08-01
 
 ### Added

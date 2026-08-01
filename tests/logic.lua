@@ -43,47 +43,46 @@ expect(20, 1, 1 / 3, "frame 20 darkens further")
 expect(22, nil, nil, "frame 22 is the zero-strength pause")
 expect(24, 0, 1 / 3, "the 24-frame cycle wraps")
 
--- ------- the draw wrap records the flash the endFrame wrap will paint
+-- ------- the overlay is state-driven: it reads the live stack
 
-local BattleTransition = require("src.render.BattleTransition")
-local draw = BattleTransition.draw
-
--- a minimal stand-in for the engine's transition state; the flash branch
--- of the original draw only reads phase/t, the wipe branch also needs
--- wipeLen/style to reach its rectangles
-local function fakeTransition(t, phase)
-  return { t = t, phase = phase, wipeLen = 24, style = "split" }
+local function withStack(states)
+  package.loaded["src.core.Game"] = { stack = { states = states } }
+  return exports.activeFlash()
+end
+local function transition(t, phase)
+  return { t = t, phase = phase, wipeLen = 40 }
 end
 
-local fake = fakeTransition(0, "flash")
-draw(fake)
-local recorded = exports.peekRecorded()
-T.check(recorded ~= nil, "flash phase records a fullscreen shade")
-T.eq(recorded.shade, 0, "black half of the cycle")
-T.eq(recorded.alpha, 1 / 3, "step alpha matches the letterbox flash")
+T.eq(withStack({}), nil, "no states, no overlay")
 
-local painted = exports.tickFlash()
-T.check(painted ~= nil, "the frame after a flash draw paints")
-T.eq(painted.shade, 0, "painted shade is the recorded black")
-T.eq(painted.alpha, 1 / 3, "painted alpha is the recorded alpha")
+local flash = withStack({ transition(4, "flash") })
+T.check(flash ~= nil and flash.shade == 0 and flash.alpha == 1,
+  "a live flash transition yields its shade/alpha")
 
-fake = fakeTransition(10, "flash") -- zero-strength step
-draw(fake)
-T.eq(exports.peekRecorded(), nil, "zero steps record nothing")
-T.eq(exports.tickFlash(), nil, "zero steps paint nothing")
+local weak = withStack({ transition(0, "flash") })
+T.check(weak ~= nil and weak.alpha == 1 / 3,
+  "the step matches the frame the letterbox shows")
 
-fake = fakeTransition(0, "wipe") -- the engine's cascade owns the window
-draw(fake)
-T.eq(exports.peekRecorded(), nil, "wipe phase records nothing")
-T.eq(exports.tickFlash(), nil, "wipe phase paints nothing")
+T.eq(withStack({ transition(10, "flash") }), nil,
+  "zero-strength steps yield nothing")
 
--- a transition that pops between its last draw and the next frame leaves a
--- stale record; the frame that drew paints, the next one must not
-fake = fakeTransition(4, "flash")
-draw(fake)
-T.check(exports.peekRecorded() ~= nil, "flash recorded before the pop")
-T.check(exports.tickFlash() ~= nil, "the frame that drew paints the flash")
-T.eq(exports.tickFlash(), nil, "a popped transition paints nothing next frame")
+T.eq(withStack({ transition(0, "wipe") }), nil,
+  "wipe phase yields nothing (the engine's cascade owns the window)")
+
+-- the transition may sit below another state (a text box, a menu)
+local buried = withStack({ { phase = "menu" }, transition(4, "flash") })
+T.check(buried ~= nil and buried.shade == 0,
+  "the overlay finds the transition below other states")
+
+-- warp fades and the white flash must never match (they carry no wipeLen)
+T.eq(withStack({ { phase = "out", t = 5 } }), nil,
+  "a warp fade does not paint the battle flash")
+T.eq(withStack({ { t = 3, frames = 7 } }), nil,
+  "the white flash does not paint the battle flash")
+
+package.loaded["src.core.Game"] = nil
+T.eq(exports.activeFlash(), nil, "no game module, no overlay")
+
 
 -- ------- script-started battles get the transition (spawn-mod path)
 -- The overworld spawn mod (and every scripted trainer battle, plus the
