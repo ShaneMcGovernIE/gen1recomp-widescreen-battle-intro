@@ -6,10 +6,11 @@ return {
   tags = { "cosmetic", "rendering", "quality-of-life" },
   differences = {
     changed = {
-      "the battle transition's flash phase now plays across the whole window instead of the centered 160x144 square (circle / double-circle wipes)",
+      "the battle transition's flash phase — the circle wipes for wild encounters and stronger foes — now plays across the whole window instead of the centered 160x144 square",
     },
     added = {},
     known = {
+      "trainer battles use spiral/shrink/split wipes that have no flash and are already fullscreen via the engine's cascade; this mod does not change them",
       "the flash overlay draws over the GBC FX grid while it plays (imperceptible during a fullscreen flash)",
       "wipe and black-hold phases already filled the window via the engine's own cascade; this mod leaves them untouched",
     },

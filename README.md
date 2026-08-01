@@ -1,8 +1,14 @@
 # Widescreen Battle Intro
 
-On windows wider than 4:3, the flash at the start of the battle intro
-(trainer battles' circle wipes) used to play inside a centered 160x144
-square; this mod extends the flash across the entire window.
+On windows wider than 4:3, the flash that opens the battle intro for wild
+encounters — and for battles against a foe at least 3 levels above your
+lead — used to play inside a centered 160x144 square; this mod extends that
+flash across the entire window.
+
+The flash only plays for the circle wipes, which are exactly those two
+cases.  Trainer battles use spiral / shrink / split wipes that have no
+flash and were already fullscreen via the engine's own cascade, so this
+mod does not change them.
 
 ## Try it
 
@@ -10,7 +16,7 @@ square; this mod extends the flash across the entire window.
 # 1. install: copy the folder into the game's mods/ directory
 cp -r mods/widescreen_battle_intro <game-dir>/mods/
 
-# 2. run the game and start a trainer battle — the flash now fills the window
+# 2. run the game and step into tall grass — the flash now fills the window
 love .
 
 # 3. confirm it loaded: open the mod manager (or `mods` in the dev console)
