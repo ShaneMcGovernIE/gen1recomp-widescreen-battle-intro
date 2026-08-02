@@ -7,6 +7,7 @@ return {
   differences = {
     changed = {
       "the battle transition's flash phase — the circle wipes for wild encounters and stronger foes — now plays across the whole window instead of the centered 160x144 square",
+      "the out-of-battle poison damage pulse now darkens the whole window instead of just the centered square",
       "battles that used to skip the intro entirely (overworld spawns, scripted trainer fights, the catch tutorial) now play the standard transition",
     },
     added = {},

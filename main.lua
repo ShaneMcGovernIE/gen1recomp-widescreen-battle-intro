@@ -17,6 +17,16 @@
 -- draw/endFrame pairing to desync), and the shade math mirrors the
 -- engine's exactly, so it stays frame-locked to the letterbox square.
 --
+-- The same overlay also covers the out-of-battle poison tick: every
+-- fourth step with a poisoned party member, the overworld draws a dark
+-- 0.45-alpha pulse inside the 160x144 canvas (OverworldController:draw,
+-- ChangeBGPalColor0_4Frames).  On a widescreen window that pulse hides
+-- in the centered square, so the endFrame overlay paints the same black
+-- veil over the rest of the window while the pulse is up, using the live
+-- poisonFlash counter so it can never desync from the square -- and only
+-- over the rest: the in-canvas rect already has the square, so the veil
+-- is drawn as the bands around the letterbox to keep the flash uniform.
+--
 -- The wipe and black-hold phases are left to the engine's own fullscreen
 -- cascade untouched.  On a 4:3 window the overlay is the same shade the
 -- letterbox square already shows, so vanilla is unchanged there.
@@ -44,14 +54,69 @@ local function flashFor(t)
   return { shade = v > 0 and 0 or 1, alpha = math.abs(v) }
 end
 
+-- The overworld's poison-tick pulse (OverworldController:draw, the
+-- ChangeBGPalColor0_4Frames port): poisonFlash counts 12..0 and the
+-- screen darkens for one 4-frame burst in the middle.  { shade, alpha },
+-- or nil when no state is pulsing.  The counter is decremented at the
+-- top of the overworld's draw before the rect is painted, so by the time
+-- endFrame runs (after every state drew) the value already reflects the
+-- pulse that landed this frame -- the veil can never lag the square.
+local POISON_SHADE = 0
+local POISON_ALPHA = 0.45
+local function poisonFlash(state)
+  local flash = state and state.poisonFlash
+  if not (flash and flash > 0) then return nil end
+  if math.floor(flash / 4) % 2 == 1 then
+    return { shade = POISON_SHADE, alpha = POISON_ALPHA }
+  end
+  return nil
+end
+
+-- The letterbox square in screen space, computed from the same renderer
+-- state Renderer:endFrame uses (fitScale/uiSize + pixel dims).  The
+-- overworld's in-canvas rect already darkens the square, so the poison
+-- veil only paints the bands around it -- the flash is uniform across the
+-- window.  Nil when the renderer can't be read (fall back to a
+-- full-window rect); an empty list means the letterbox already covers the
+-- window, so there is nothing to add and the engine's rect is the whole
+-- flash (the 4:3 / zoomed cases, vanilla unchanged).
+local function letterboxBands(self)
+  local g = love and love.graphics
+  if not (g and g.getDimensions and g.getPixelDimensions) then return nil end
+  local ww, wh = g.getDimensions()
+  local pw, ph = g.getPixelDimensions()
+  local dpiX, dpiY = 1, 1
+  if ww > 0 and pw > 0 then dpiX = pw / ww end
+  if wh > 0 and ph > 0 then dpiY = ph / wh end
+  if not (self and self.fitScale and self.uiSize) then return nil end
+  local Sp = self:fitScale()
+  local uiw, uih = self:uiSize()
+  local vpw, vph = uiw * Sp / dpiX, uih * Sp / dpiY
+  local ox = math.floor((pw - uiw * Sp) / 2) / dpiX
+  local oy = math.floor((ph - uih * Sp) / 2) / dpiY
+  local bands = {}
+  if ox > 1e-6 then bands[#bands + 1] = { 0, 0, ox, wh } end
+  if oy > 1e-6 then bands[#bands + 1] = { 0, 0, ww, oy } end
+  if ww - (ox + vpw) > 1e-6 then
+    bands[#bands + 1] = { ox + vpw, 0, ww - ox - vpw, wh }
+  end
+  if wh - (oy + vph) > 1e-6 then
+    bands[#bands + 1] = { 0, oy + vph, ww, wh - oy - vph }
+  end
+  return bands
+end
+
 return function(mod)
   -- The overlay is state-driven: every frame's endFrame asks the state
   -- stack whether a battle transition is in its flash phase right now and
   -- paints the same shade/alpha over the whole window.  There is no
   -- draw/endFrame pairing to desync (a script runner can push the
   -- transition at odd points in the frame, and the flash always matches
-  -- the letterbox square the engine draws).
-  local function activeFlash()
+  -- the letterbox square the engine draws).  Returns
+  -- { shade, alpha, bands = { {x, y, w, h}, ... } } -- bands set means
+  -- the overlay is the poison pulse and only the area outside the
+  -- letterbox needs the veil (the canvas rect already has the square).
+  local function activeFlash(self)
     local ok, Game = pcall(require, "src.core.Game")
     local stack = ok and Game and Game.stack
     if not (stack and stack.states) then return nil end
@@ -62,6 +127,12 @@ return function(mod)
       if state and state.phase == "flash" and state.wipeLen then
         return flashFor(state.t)
       end
+      -- the overworld's poison-tick pulse (poisonFlash is its marker)
+      local poison = poisonFlash(state)
+      if poison then
+        poison.bands = letterboxBands(self)
+        return poison
+      end
     end
     return nil
   end
@@ -69,15 +140,23 @@ return function(mod)
   local originalEndFrame = Renderer.endFrame
   function Renderer.endFrame(self, ...)
     local result = originalEndFrame(self, ...)
-    local flash = activeFlash()
+    local flash = activeFlash(self)
     if flash then
       local g = love and love.graphics
       if g and g.getDimensions and g.setColor and g.rectangle then
-        local ww, wh = g.getDimensions()
         g.push("all")
         g.setShader()
         g.setColor(flash.shade, flash.shade, flash.shade, flash.alpha)
-        g.rectangle("fill", 0, 0, ww, wh)
+        if flash.bands then
+          -- poison pulse: the overworld's in-canvas rect already darkens
+          -- the letterbox square, so only the bands around it are veiled
+          for _, band in ipairs(flash.bands) do
+            g.rectangle("fill", band[1], band[2], band[3], band[4])
+          end
+        else
+          local ww, wh = g.getDimensions()
+          g.rectangle("fill", 0, 0, ww, wh)
+        end
         g.pop()
       end
     end
@@ -170,5 +249,7 @@ return function(mod)
 
   -- exposed for the headless test suite
   mod.exports.flashFor = flashFor
+  mod.exports.poisonFlash = poisonFlash
+  mod.exports.letterboxBands = letterboxBands
   mod.exports.activeFlash = activeFlash
 end

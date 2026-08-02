@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.0] - 2026-08-02
+
+### Added
+
+- The out-of-battle poison damage pulse now plays fullscreen: every fourth
+  step with a poisoned party member, the dark 0.45-alpha flash covers the
+  whole window instead of the centered 160x144 square.  The veil is drawn
+  only around the letterbox (the engine's in-canvas rect already darkens
+  the square), so the flash is uniform across the window at any zoom.
+
 ## [1.2.1] - 2026-08-01
 
 ### Fixed

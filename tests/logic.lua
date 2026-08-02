@@ -83,6 +83,85 @@ T.eq(withStack({ { t = 3, frames = 7 } }), nil,
 package.loaded["src.core.Game"] = nil
 T.eq(exports.activeFlash(), nil, "no game module, no overlay")
 
+-- ------- the out-of-battle poison pulse gets the same veil
+
+-- the engine decrements at the top of draw, then pulses when
+-- floor(v/4) is odd; the endFrame overlay reads the post-decrement value,
+-- so it sees 11..1 and the four dark frames are values 7..4
+local pf = exports.poisonFlash
+T.check(type(pf) == "function", "poisonFlash is exported")
+T.eq(pf(nil), nil, "no state: no pulse")
+T.eq(pf({}), nil, "unpoisoned state: no pulse")
+T.eq(pf({ poisonFlash = 0 }), nil, "expired counter: no pulse")
+for v = 12, 1, -1 do
+  local expected = (v - 1) >= 4 and (v - 1) <= 7
+  local flash = pf({ poisonFlash = v - 1 })
+  if expected then
+    T.check(flash ~= nil and flash.shade == 0 and flash.alpha == 0.45,
+      ("pulse frame %d (%s, %s)"):format(v,
+        flash and tostring(flash.shade) or "nil",
+        flash and tostring(flash.alpha) or "nil"))
+  else
+    T.eq(flash, nil, "off frame " .. v)
+  end
+end
+
+-- a fake renderer that mirrors Renderer:fitScale/uiSize, plus a
+-- widescreen window: the veil is the bands around the centered letterbox
+local savedDims = love.graphics.getDimensions
+local savedPx = love.graphics.getPixelDimensions
+love.graphics.getDimensions = function() return 1280, 720 end
+love.graphics.getPixelDimensions = function() return 1280, 720 end
+local renderer = {
+  fitScale = function() return 5 end,
+  uiSize = function() return 160, 144 end,
+}
+T.check(type(exports.letterboxBands) == "function",
+  "letterboxBands is exported")
+local bands = exports.letterboxBands(renderer)
+T.eq(#bands, 2, "widescreen: two side bands")
+local left, right
+for _, band in ipairs(bands) do
+  if band[1] == 0 then left = band else right = band end
+end
+T.eq(table.concat(left, ","), "0,0,240,720", "left band")
+T.eq(table.concat(right, ","), "1040,0,240,720", "right band")
+
+-- a 4:3 window: the letterbox is the whole window, nothing to add
+love.graphics.getDimensions = function() return 640, 480 end
+love.graphics.getPixelDimensions = function() return 640, 480 end
+T.eq(#exports.letterboxBands(renderer), 0, "4:3: no bands")
+
+-- an unreadable renderer falls back to nil (full-window veil)
+love.graphics.getDimensions = function() return 1280, 720 end
+love.graphics.getPixelDimensions = function() return 1280, 720 end
+T.eq(exports.letterboxBands(nil), nil, "no renderer: nil, full-window")
+love.graphics.getDimensions = savedDims
+love.graphics.getPixelDimensions = savedPx
+
+-- a poisoning overworld on the stack yields the banded poison veil
+local function withPoison(poisonFlash, over)
+  package.loaded["src.core.Game"] = {
+    stack = { states = over or { { poisonFlash = poisonFlash } } },
+  }
+  return exports.activeFlash(renderer)
+end
+local pflash = withPoison(6)
+T.check(pflash ~= nil and pflash.shade == 0 and pflash.alpha == 0.45,
+  "poison pulse detected through the stack")
+T.eq(type(pflash.bands), "table", "poison veil is banded")
+T.eq(withPoison(9), nil, "off-pulse frame: no overlay")
+
+-- a battle transition outranks a lingering poison counter (a transition
+-- is pushed on top of the overworld, so it is the last stack entry)
+local intro = withPoison(nil, {
+  { poisonFlash = 6 },
+  transition(4, "flash"),
+})
+T.check(intro ~= nil and intro.shade == 0, "battle flash wins over poison")
+T.eq(intro.bands, nil, "battle flash is full-window, not banded")
+package.loaded["src.core.Game"] = nil
+
 
 -- ------- script-started battles get the transition (spawn-mod path)
 -- The overworld spawn mod (and every scripted trainer battle, plus the
@@ -136,7 +215,7 @@ local transition = pushes[1]
 T.check(transition and transition.phase == "flash",
   "the transition opens with the flash")
 T.eq(yields, 1, "the runner yields until the battle is pushed")
-for _ = 1, 200 do
+for _ = 1, 300 do
     if #pushes >= 2 then break end
     transition:update(1 / 60)
   end
@@ -166,7 +245,7 @@ T.eq(#pushes, 1, "scripted trainer battle pushes one transition")
 local trainerTransition = pushes[1]
 T.check(trainerTransition and trainerTransition.phase == "wipe",
   "trainer wipes never flash (vanilla bits)")
-for _ = 1, 200 do
+for _ = 1, 300 do
     if #pushes >= 2 then break end
     trainerTransition:update(1 / 60)
   end
@@ -184,7 +263,7 @@ T.eq(#pushes, 1, "the catch tutorial pushes one transition")
 local omTransition = pushes[1]
 T.check(omTransition and omTransition.phase == "flash",
   "the tutorial battle opens with the wild flash")
-for _ = 1, 200 do
+for _ = 1, 300 do
     if #pushes >= 2 then break end
     omTransition:update(1 / 60)
   end

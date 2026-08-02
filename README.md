@@ -3,7 +3,10 @@
 On windows wider than 4:3, the flash that opens the battle intro for wild
 encounters — and for battles against a foe at least 3 levels above your
 lead — used to play inside a centered 160x144 square; this mod extends that
-flash across the entire window.
+flash across the entire window.  It also extends the dark pulse of
+out-of-battle poison damage the same way: every fourth step with a poisoned
+party member, the screen darkens across the whole window instead of just
+the centered square.
 
 The flash only plays for the circle wipes, which are exactly those two
 cases.  Trainer battles use spiral / shrink / split wipes that have no
@@ -39,6 +42,11 @@ math, records the shade/alpha the transition draws each frame (wrapping
 `BattleTransition.draw`), and paints a full-window rect over the finished
 composite (wrapping `Renderer.endFrame`).  A per-frame stamp guarantees the
 overlay stops the moment the transition pops.
+
+The out-of-battle poison pulse works the same way: the overworld's
+in-canvas 0.45-alpha rect already covers the letterbox square, so the
+overlay paints the same black veil only around it (the bands outside the
+letterbox), keeping the flash uniform across the window.
 
 ## Compatibility
 
