@@ -2,7 +2,10 @@
 -- Asserts the mod's stated effect: the battle transition's flash phase
 -- records a fullscreen shade/alpha each frame (the value the endFrame wrap
 -- paints over the whole window), the zero-strength steps record nothing,
--- and the wipe phase hands the window back to the engine's cascade.
+-- the wipe phase hands the window back to the engine's cascade, the
+-- script-started battles get the standard transition, and the FLASHLESS
+-- INTROS toggle turns every battle intro into the Champion battle's
+-- flashless outward spiral.
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
 local T = require("tests.modkit")
@@ -15,6 +18,66 @@ T.eq(#run.errors, 0, "loads clean (" .. tostring(run.errors[1]) .. ")")
 local exports = run.loader.exports.widescreen_battle_intro
 T.check(exports ~= nil, "the mod exports its flash helper")
 T.check(type(exports.flashFor) == "function", "flashFor is exported")
+
+-- ------- the FLASHLESS INTROS toggle
+-- Runs first: the mod's closures captured the module table loaded at
+-- loadMod time; the activeFlash tests below replace and nil
+-- package.loaded["src.core.Game"], so requiring it again here would grab a
+-- different table and the toggle reads would go dead.
+
+-- pure style resolution: ON forces the champion spiral for every context,
+-- OFF is the vanilla 3-bit selection
+T.eq(exports.styleFor(true, {}), "spiralout",
+  "toggle ON: wild spawn -> the champion spiral")
+T.eq(exports.styleFor(true, { trainer = true, dungeon = true }), "spiralout",
+  "toggle ON: dungeon trainer battles too")
+T.eq(exports.styleFor(false, {}), "doublecircle",
+  "toggle OFF: vanilla wild bits")
+T.eq(exports.styleFor(false, { stronger = true }), "circle",
+  "toggle OFF: stronger wild -> circle")
+T.eq(exports.styleFor(false, { trainer = true }), "spiralin",
+  "toggle OFF: plain trainer -> spiral in")
+T.eq(exports.styleFor(false, { trainer = true, stronger = true }), "spiralout",
+  "toggle OFF: the champion ctx resolves to spiralout anyway")
+T.eq(exports.styleFor(false, { dungeon = true }), "hstripes",
+  "toggle OFF: dungeon wild -> hstripes")
+
+-- the transition.style hook honours the toggle (BattleTransition.new asks
+-- it for the wipe on every battle, so one wrap covers every trigger)
+local Game = require("src.core.Game")
+Game.mods = run.loader
+local Runtime = require("src.mods.Runtime")
+local vanillaStyle = function(ctx) return exports.styleFor(false, ctx) end
+T.eq(Runtime.call("transition.style", vanillaStyle, {}), "doublecircle",
+  "hook passes the vanilla wipe through when OFF")
+run.loader.modOptions = { widescreen_battle_intro = { flashless_intros = true } }
+T.eq(Runtime.call("transition.style", vanillaStyle, {}), "spiralout",
+  "hook forces the champion spiral when ON")
+T.eq(Runtime.call("transition.style", vanillaStyle,
+                  { trainer = true, dungeon = true }), "spiralout",
+  "dungeon trainer battles are flashless when ON")
+run.loader.modOptions = nil
+
+-- the OPTIONS row rides the ui.options.rows hook
+local optionRows = Runtime.call("ui.options.rows", function(_, r) return r end,
+                                {}, {})
+local toggleRow
+for _, row in ipairs(optionRows) do
+  if row.id == "flashless_intros" then toggleRow = row break end
+end
+T.neq(toggleRow, nil, "the FLASHLESS INTROS row joins the options menu")
+T.eq(toggleRow.label, "FLASHLESS INTROS", "row label")
+T.eq(toggleRow.value(), "OFF", "defaults to OFF")
+run.loader.modOptions = { widescreen_battle_intro = { flashless_intros = false } }
+toggleRow.step()
+T.eq(run.loader.modOptions.widescreen_battle_intro.flashless_intros, true,
+  "stepping the row flips the persisted bucket")
+T.eq(toggleRow.value(), "ON", "the row shows ON after the flip")
+toggleRow.step()
+T.eq(run.loader.modOptions.widescreen_battle_intro.flashless_intros, false,
+  "stepping again flips back")
+T.eq(toggleRow.value(), "OFF", "the row shows OFF again")
+run.loader.modOptions = nil
 
 -- ------- flash step math (BattleTransition_FlashScreenPalettes)
 

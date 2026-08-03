@@ -12,6 +12,14 @@ The flash only plays for the circle wipes, which are exactly those two
 cases.  Trainer battles use spiral / shrink / split wipes that have no
 flash and were already fullscreen via the engine's own cascade.
 
+## Flashless intros
+
+The OPTIONS menu gains a FLASHLESS INTROS toggle.  ON plays every battle
+intro the way the Champion battle does: the outward spiral, straight to
+the wipe with no flash — for wild encounters, trainers, dungeon fights,
+scripted battles and the catch tutorial alike.  The setting persists in
+options.lua, so it survives NEW GAME, CONTINUE and quitting.
+
 ## Every battle trigger
 
 Some battles start with no transition at all: overworld spawns (mods that

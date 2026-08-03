@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.0] - 2026-08-03
+
+### Added
+
+- FLASHLESS INTROS option in the OPTIONS menu: when ON, every battle intro
+  plays the Champion battle's intro — the flashless outward spiral —
+  instead of the per-context wipe.  Applies to every battle trigger:
+  overworld spawns, scripted trainer battles, the catch tutorial, and
+  dungeon or stronger-foe wipes alike.
+
 ## [1.3.0] - 2026-08-02
 
 ### Added

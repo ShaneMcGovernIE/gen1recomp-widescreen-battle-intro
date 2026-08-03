@@ -30,9 +30,29 @@
 -- The wipe and black-hold phases are left to the engine's own fullscreen
 -- cascade untouched.  On a 4:3 window the overlay is the same shade the
 -- letterbox square already shows, so vanilla is unchanged there.
+--
+-- FLASHLESS INTROS (an OPTIONS row): when ON, every battle intro plays the
+-- Champion battle's intro -- the outward spiral, which never flashes (the
+-- champion fight is a trainer battle, and only the circle wipes flash).
+-- The transition.style hook runs for every BattleTransition.new -- engine
+-- spawns (OverworldState:pushBattle), the scripted battles this mod wraps,
+-- and the catch tutorial alike -- so one hook covers every trigger.
 
 local BattleTransition = require("src.render.BattleTransition")
 local Renderer = require("src.render.Renderer")
+local Game = require("src.core.Game")
+local Strings = require("src.core.Strings")
+
+-- the vanilla 3-bit wipe selection (BattleTransition.lua, from
+-- battle_transitions.asm GetBattleTransitionID_*): bit 0 trainer, bit 1
+-- enemy at least 3 levels above the lead, bit 2 dungeon map
+local BIT_STYLES = { [0] = "doublecircle", "spiralin", "circle", "spiralout",
+                     "hstripes", "shrink", "vstripes", "split" }
+
+-- the wipe the Champion battle plays: a trainer battle against a stronger
+-- foe on a non-dungeon map resolves to bits %011 = spiralout, and the
+-- spiral defs never flash
+local CHAMPION_STYLE = "spiralout"
 
 -- BattleTransition_FlashScreenPalettes constants
 -- (src/render/BattleTransition.lua): one palette step every FLASH_HOLD
@@ -106,6 +126,27 @@ local function letterboxBands(self)
   return bands
 end
 
+-- The wipe style for a battle context, with or without the flashless
+-- toggle: ON forces every battle to the Champion battle's outward spiral;
+-- OFF is the vanilla bits (mirror of BattleTransition.lua's vanillaStyle).
+-- Pure, so the headless suite can assert both branches.
+local function styleFor(flashless, ctx)
+  if flashless then return CHAMPION_STYLE end
+  return BIT_STYLES[(ctx.trainer and 1 or 0) + (ctx.stronger and 2 or 0)
+                    + (ctx.dungeon and 4 or 0)]
+end
+
+-- The FLASHLESS INTROS OPTIONS row, built against caller-supplied get/set
+-- so the menu and the headless tests share one implementation.
+local function toggleRow(getFn, setFn)
+  return {
+    id = "flashless_intros",
+    label = Strings("FLASHLESS INTROS"),
+    value = function() return getFn() and Strings("ON") or Strings("OFF") end,
+    step = function() setFn(not getFn()) return true end,
+  }
+end
+
 return function(mod)
   -- The overlay is state-driven: every frame's endFrame asks the state
   -- stack whether a battle transition is in its flash phase right now and
@@ -136,6 +177,51 @@ return function(mod)
     end
     return nil
   end
+
+  -- Toggles ride options.lua's per-mod bucket (the same store the mod
+  -- manager writes) instead of the per-save modData: NEW GAME and CONTINUE
+  -- replace the save's modData outright, and an unsaved session lost
+  -- toggles on quit.  options.lua survives both, so the flip stays flipped.
+  local FLASHLESS_KEY = "flashless_intros"
+  local function getFlashless()
+    local loader = Game.mods
+    local bucket = loader and loader.modOptions and loader.modOptions[mod.id]
+    return bucket and bucket[FLASHLESS_KEY] == true or false
+  end
+  local function setFlashless(value)
+    local loader = Game.mods
+    if not loader then return end
+    loader.modOptions = loader.modOptions or {}
+    loader.modOptions[mod.id] = loader.modOptions[mod.id] or {}
+    loader.modOptions[mod.id][FLASHLESS_KEY] = value
+    -- mirror into the active save's options so a session that saves keeps
+    -- it; writeOptions persists options.lua
+    if Game.save and Game.save.options then
+      Game.save.options.modOptions = Game.save.options.modOptions or {}
+      Game.save.options.modOptions[mod.id] =
+        Game.save.options.modOptions[mod.id] or {}
+      Game.save.options.modOptions[mod.id][FLASHLESS_KEY] = value
+    end
+    if Game.writeOptions then Game:writeOptions() end
+  end
+
+  -- FLASHLESS INTROS: with the toggle on, every battle intro becomes the
+  -- Champion battle's -- the flashless outward spiral.  BattleTransition.new
+  -- asks the transition.style hook for the wipe on every battle (engine
+  -- spawns, the scripted battles wrapped below, the catch tutorial), so one
+  -- wrap covers every trigger; the spiral def has no flash flag, so the
+  -- transition opens straight on the wipe.
+  mod.hooks:wrap("transition.style", function(next, ctx)
+    if getFlashless() then return styleFor(true, ctx) end
+    return next(ctx)
+  end)
+
+  -- the OPTIONS row
+  mod.hooks:wrap("ui.options.rows", function(next, game, rows)
+    rows = next(game, rows)
+    rows[#rows + 1] = toggleRow(getFlashless, setFlashless)
+    return rows
+  end)
 
   local originalEndFrame = Renderer.endFrame
   function Renderer.endFrame(self, ...)
@@ -252,4 +338,7 @@ return function(mod)
   mod.exports.poisonFlash = poisonFlash
   mod.exports.letterboxBands = letterboxBands
   mod.exports.activeFlash = activeFlash
+  mod.exports.styleFor = styleFor
+  mod.exports.toggleRow = toggleRow
+  mod.exports.defaultFlashless = function() return false end
 end
