@@ -22,11 +22,12 @@ options.lua, so it survives NEW GAME, CONTINUE and quitting.
 
 ## Every battle trigger
 
-Some battles start with no transition at all: overworld spawns (mods that
-run `start_battle "wild"`, like Wilds of Kanto), scripted trainer fights
-(the rivals, Jessie & James) and the Viridian catch tutorial.  This mod
-gives every one of them the standard intro — the flash + circle wipe for
-wild battles, the spiral / shrink / split wipes for trainers — so the
+Every battle trigger — overworld spawns (mods that run `start_battle
+"wild"`, like Wilds of Kanto), scripted trainer fights (the rivals, Jessie
+& James) and the Viridian catch tutorial — routes through the engine's
+`OverworldState:pushBattle`, which pushes the standard transition and
+starts the battle music.  This mod's `transition.style` hook still governs
+the wipe they play (the FLASHLESS INTROS option included), so the
 fullscreen intro effect plays no matter what triggered the battle.
 
 ## Try it
@@ -43,13 +44,16 @@ love .
 
 ## How it works
 
-The engine draws the transition's flash into the classic 160x144 UI canvas
-and only the wipe phase extends past the letterbox
-(`Renderer:drawBattleCascade`).  This mod mirrors the engine's flash-step
-math, records the shade/alpha the transition draws each frame (wrapping
-`BattleTransition.draw`), and paints a full-window rect over the finished
-composite (wrapping `Renderer.endFrame`).  A per-frame stamp guarantees the
-overlay stops the moment the transition pops.
+The engine draws the battle transition's flash over the whole surface
+itself — `BattleTransition.draw` hands it to the renderer as a screen-space
+veil (`Renderer.screenVeil`), which `Renderer.endFrame` paints across the
+window.  This mod's `Renderer.endFrame` wrap asks the state stack whether a
+battle transition is flashing right now, and only paints its own overlay
+when the engine drew no veil that frame — the out-of-battle poison pulse
+and old-engine / buried-transition flashes — so the engine's fullscreen
+flash is never double-darkened.  The overlay's shade/alpha mirrors the
+engine's flash-step math exactly, and it stops the moment the transition
+pops.
 
 The out-of-battle poison pulse works the same way: the overworld's
 in-canvas 0.45-alpha rect already covers the letterbox square, so the

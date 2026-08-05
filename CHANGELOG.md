@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.1] - 2026-08-05
+
+### Fixed
+
+- The battle flash no longer double-darkens. The engine now paints the
+  flash through `Renderer.screenVeil`, which `endFrame` paints across the
+  whole window, so the mod's own wrap painted the same shade again (alpha
+  `1-(1-a)^2`). The wrap now defers to `screenVeil`. The poison pulse no
+  longer paints over the post-battle white fade either.
+- Dropped the `Commands.start_battle` and `Commands.old_man_demo`
+  overrides: the engine's `OverworldState:pushBattle` now owns scripted
+  battle transitions and their music, and `old_man_demo` had silently
+  dropped the `failThrow` argument Yellow's catch training needs.
+
+### Changed
+
+- Dead `src.render.BattleTransition` require and `defaultFlashless` export
+  removed; README updated to the engine's current render names.
+
 ## [1.4.0] - 2026-08-03
 
 ### Added
