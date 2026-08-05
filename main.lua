@@ -2,20 +2,25 @@
 --
 -- The into-battle transition opens with the palette flash
 -- (BattleTransition_FlashScreenPalettes) for the two circle wipes, then
--- wipes the screen.  The engine draws both phases into the classic 160x144
--- UI canvas, and only the wipe phase extends past the letterbox
--- (Renderer:drawBattleCascade).  On any window wider than 4:3 the flash
--- therefore plays inside a centered square while the frozen overworld
--- shows around it.
+-- wipes the screen.  The engine draws both phases fullscreen: the wipe as
+-- a whole-surface cascade (Renderer:drawBattleWipe) and the flash as a
+-- screen-space veil (Renderer.screenVeil).  Older engines drew the flash
+-- only inside the centered 160x144 letterbox, so on any window wider than
+-- 4:3 it played inside a centered square while the frozen overworld
+-- showed around it.
 --
--- This mod extends the flash across the whole window by wrapping
--- Renderer.endFrame and painting one full-window rect with the live
--- transition's shade/alpha after the frame has composited, in screen
--- space.  The overlay is state-driven: it asks the state stack whether a
--- battle transition is in its flash phase right now (a script runner can
--- push the transition at odd points in the frame, so there is no
--- draw/endFrame pairing to desync), and the shade math mirrors the
--- engine's exactly, so it stays frame-locked to the letterbox square.
+-- This mod extends the flash across the whole window.  The engine itself
+-- has done this since 0.1.53: BattleTransition:draw hands the flash to the
+-- renderer as Renderer.screenVeil, which endFrame paints over the whole
+-- surface.  This mod's Renderer.endFrame wrap therefore only fires when the
+-- engine drew no veil that frame -- the out-of-battle poison pulse (below)
+-- and old-engine or buried-transition flashes -- so it can never
+-- double-darken the engine's own fullscreen flash.  The overlay is
+-- state-driven: it asks the state stack whether a battle transition is in
+-- its flash phase right now (a script runner can push the transition at
+-- odd points in the frame, so there is no draw/endFrame pairing to
+-- desync), and the shade math mirrors the engine's exactly, so it stays
+-- frame-locked to the letterbox square.
 --
 -- The same overlay also covers the out-of-battle poison tick: every
 -- fourth step with a poisoned party member, the overworld draws a dark
@@ -35,10 +40,9 @@
 -- Champion battle's intro -- the outward spiral, which never flashes (the
 -- champion fight is a trainer battle, and only the circle wipes flash).
 -- The transition.style hook runs for every BattleTransition.new -- engine
--- spawns (OverworldState:pushBattle), the scripted battles this mod wraps,
--- and the catch tutorial alike -- so one hook covers every trigger.
+-- spawns (OverworldState:pushBattle), scripted battles and the catch
+-- tutorial alike -- so one hook covers every trigger.
 
-local BattleTransition = require("src.render.BattleTransition")
 local Renderer = require("src.render.Renderer")
 local Game = require("src.core.Game")
 local Strings = require("src.core.Strings")
@@ -153,7 +157,9 @@ return function(mod)
   -- paints the same shade/alpha over the whole window.  There is no
   -- draw/endFrame pairing to desync (a script runner can push the
   -- transition at odd points in the frame, and the flash always matches
-  -- the letterbox square the engine draws).  Returns
+  -- the letterbox square the engine draws).  The wrap only paints when the
+  -- engine drew no screenVeil that frame (see Renderer.endFrame), so the
+  -- engine's own fullscreen flash is never double-darkened.  Returns
   -- { shade, alpha, bands = { {x, y, w, h}, ... } } -- bands set means
   -- the overlay is the poison pulse and only the area outside the
   -- letterbox needs the veil (the canvas rect already has the square).
@@ -208,7 +214,7 @@ return function(mod)
   -- FLASHLESS INTROS: with the toggle on, every battle intro becomes the
   -- Champion battle's -- the flashless outward spiral.  BattleTransition.new
   -- asks the transition.style hook for the wipe on every battle (engine
-  -- spawns, the scripted battles wrapped below, the catch tutorial), so one
+  -- spawns and scripted battles alike, the catch tutorial included), so one
   -- wrap covers every trigger; the spiral def has no flash flag, so the
   -- transition opens straight on the wipe.
   mod.hooks:wrap("transition.style", function(next, ctx)
@@ -227,7 +233,12 @@ return function(mod)
   function Renderer.endFrame(self, ...)
     local result = originalEndFrame(self, ...)
     local flash = activeFlash(self)
-    if flash then
+    -- The engine's own screenVeil already painted the battle flash (and
+    -- the post-battle white fade) across the whole window this frame
+    -- (Renderer:endFrame).  Painting again would double-darken the flash,
+    -- so the overlay fires only when the engine drew no veil -- the poison
+    -- pulse, and old-engine / buried-transition flashes.
+    if flash and not self.screenVeil then
       local g = love and love.graphics
       if g and g.getDimensions and g.setColor and g.rectangle then
         g.push("all")
@@ -250,88 +261,13 @@ return function(mod)
   end
 
   -- Script-started battles -- the overworld spawn mod's touch-to-battle
-  -- path, scripted trainer fights (the rivals, Jessie & James) and the
-  -- static-encounter script -- push the battle straight onto the stack
-  -- with no transition, so the intro never plays.  Give every one of them
-  -- the same transition the engine's pushBattle uses (flash + circle wipe
-  -- for wild spawns, spiral / shrink / split wipes for trainers), so the
-  -- intro effect plays fullscreen no matter what triggered the battle.
-  -- The wipe selection still follows the vanilla bits.
-  local Commands = require("src.script.Commands")
-  local originalStartBattle = Commands.start_battle
-  function Commands.start_battle(ctx, kind, a, b)
-    local BattleState = require("src.battle.BattleState")
-    local BattleTransition = require("src.render.BattleTransition")
-    local runner = ctx.runner
-    local battle
-    if kind == "wild" then
-      battle = BattleState.newWild(ctx.game, a, b)
-    else
-      battle = BattleState.newTrainer(ctx.game, a, b)
-    end
-    battle.onFinish = function(result)
-      ctx.lastBattleResult = result
-      ctx.lastCheck = result == "win"
-      if ctx.overworld then
-        if result == "win" then
-          ctx.afterScript = ctx.afterScript or {}
-          table.insert(ctx.afterScript, function()
-            ctx.overworld:afterBattle(result, battle)
-          end)
-        else
-          ctx.overworld:afterBattle(result, battle)
-        end
-      end
-      runner:resume()
-    end
-    local lead
-    for _, mon in ipairs(ctx.game.save.party) do
-      if mon.hp > 0 then lead = mon break end
-    end
-    local enemyLevel = battle.enemy and battle.enemy.mon
-        and battle.enemy.mon.level or 0
-    local overworld = ctx.overworld
-    local dungeon = overworld
-        and type(overworld.isDungeonTransitionMap) == "function"
-        and overworld:isDungeonTransitionMap() or false
-    ctx.game.stack:push(BattleTransition.new(ctx.game, function()
-      ctx.game.stack:push(battle)
-    end, {
-      trainer = kind == "trainer",
-      stronger = lead ~= nil and enemyLevel >= lead.level + 3,
-      dungeon = dungeon,
-    }))
-    runner:yield()
-  end
-
-  -- The Viridian catch tutorial (Commands.old_man_demo) also pushes its
-  -- demo battle without a transition; give it the wild intro too.
-  local originalOldManDemo = Commands.old_man_demo
-  function Commands.old_man_demo(ctx)
-    local BattleState = require("src.battle.BattleState")
-    local BattleTransition = require("src.render.BattleTransition")
-    local runner = ctx.runner
-    local om = ctx.game.data.field.oldManBattle or { species = "WEEDLE", level = 5 }
-    local battle = BattleState.newWild(ctx.game, om.species, om.level)
-    battle:makeOldManDemo()
-    battle.onFinish = function() runner:resume() end
-    local lead
-    for _, mon in ipairs(ctx.game.save.party) do
-      if mon.hp > 0 then lead = mon break end
-    end
-    local overworld = ctx.overworld
-    local dungeon = overworld
-        and type(overworld.isDungeonTransitionMap) == "function"
-        and overworld:isDungeonTransitionMap() or false
-    ctx.game.stack:push(BattleTransition.new(ctx.game, function()
-      ctx.game.stack:push(battle)
-    end, {
-      trainer = false,
-      stronger = lead ~= nil and (tonumber(om.level) or 5) >= lead.level + 3,
-      dungeon = dungeon,
-    }))
-    runner:yield()
-  end
+  -- path, scripted trainer fights (the rivals, Jessie & James), the
+  -- static-encounter script and the catch tutorial -- route through
+  -- OverworldState:pushBattle since engine commit f109530, which pushes the
+  -- same BattleTransition (flash + circle wipe for wild spawns, the
+  -- vanilla-bit wipes for trainers) and starts the battle music, so they
+  -- need no wrap here.  The transition.style hook above still governs their
+  -- wipe, FLASHLESS INTROS included.
 
   -- exposed for the headless test suite
   mod.exports.flashFor = flashFor
@@ -340,5 +276,4 @@ return function(mod)
   mod.exports.activeFlash = activeFlash
   mod.exports.styleFor = styleFor
   mod.exports.toggleRow = toggleRow
-  mod.exports.defaultFlashless = function() return false end
 end
