@@ -1,7 +1,7 @@
 {
   "id": "widescreen_battle_intro",
   "name": "Widescreen Battle Intro",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -12,5 +12,5 @@
   "conflicts": [],
   "permissions": ["engine_internals"],
   "github": "ShaneMcGovernIE/gen1recomp-widescreen-battle-intro",
-  "description": "Extends the battle intro's flash effect (wild encounters and stronger foes) across the whole window, so on non-4:3 displays it no longer plays inside a centered 4:3 square. Also extends the out-of-battle poison damage pulse to the whole window. Adds a FLASHLESS INTROS option that plays every battle intro as the Champion battle's flashless outward spiral."
+  "description": "Extends the battle intro's flash effect (wild encounters and stronger foes) across the whole window, so on non-4:3 displays it no longer plays inside a centered 4:3 square. Also extends the out-of-battle poison damage pulse to the whole window. Adds a FLASHLESS INTROS option that plays every battle intro as the Champion battle's flashless outward spiral, and a BLACK OUTRO option (ON by default) that replaces the post-battle white flash with a slow fade to black."
 }

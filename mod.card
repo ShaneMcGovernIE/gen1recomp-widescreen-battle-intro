@@ -10,6 +10,7 @@ return {
       "the out-of-battle poison damage pulse now darkens the whole window instead of just the centered square",
       "battles that used to skip the intro entirely (overworld spawns, scripted trainer fights, the catch tutorial) now play the standard transition",
       "a FLASHLESS INTROS option in the OPTIONS menu turns every battle intro into the Champion battle's flashless outward spiral",
+      "a BLACK OUTRO option in the OPTIONS menu (ON by default) replaces the post-battle white flash with a slow fade to black — the battle fades out to full black, the screen cuts behind it, and the map fades back up",
     },
     added = {},
     known = {
@@ -17,6 +18,7 @@ return {
       "the flash overlay draws over the GBC FX grid while it plays (imperceptible during a fullscreen flash)",
       "wipe and black-hold phases already filled the window via the engine's own cascade; this mod leaves them untouched",
       "with FLASHLESS INTROS on, every battle uses the same outward spiral (the Champion battle's wipe), so the per-context variety is gone while the option is set",
+      "a loss still warps to the last Pokemon Center through its own transition; the blackout never used the white flash and is not affected by BLACK OUTRO",
     },
   },
   credits = {},

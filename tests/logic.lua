@@ -4,7 +4,11 @@
 -- paints over the whole window), the zero-strength steps record nothing,
 -- the wipe phase hands the window back to the engine's cascade, and the
 -- FLASHLESS INTROS toggle turns every battle intro into the Champion
--- battle's flashless outward spiral.  Script-started battles are not
+-- battle's flashless outward spiral.  The BLACK OUTRO toggle (on by
+-- default) replaces the engine's white post-battle return with a slow fade
+-- to black: the fade state's choreography -- out over the battle's last
+-- live frame, the engine finish behind full black, the map up out of it --
+-- is driven headlessly on a fake stack.  Script-started battles are not
 -- exercised here: the engine routes them through OverworldState:pushBattle
 -- (f109530), which pushes the transition and starts the battle music, and
 -- the mod's transition.style hook governs their wipe through that path.
@@ -79,6 +83,183 @@ toggleRow.step()
 T.eq(run.loader.modOptions.widescreen_battle_intro.flashless_intros, false,
   "stepping again flips back")
 T.eq(toggleRow.value(), "OFF", "the row shows OFF again")
+run.loader.modOptions = nil
+
+-- ------- the BLACK OUTRO toggle (the battle exit fades to black)
+
+-- the rows captured earlier already include the outro row -- the mod
+-- registers both at load; its get/set read the loader live, so the flip
+-- below works against the same bucket the flashless tests used
+local outroRow
+for _, row in ipairs(optionRows) do
+  if row.id == "black_outro" then outroRow = row break end
+end
+T.neq(outroRow, nil, "the BLACK OUTRO row joins the options menu")
+T.eq(outroRow.label, "BLACK OUTRO", "outro row label")
+T.eq(outroRow.value(), "ON", "defaults to ON (the fade is the point)")
+outroRow.step()
+T.eq(run.loader.modOptions.widescreen_battle_intro.black_outro, false,
+  "stepping the row persists the flip")
+T.eq(outroRow.value(), "OFF", "the row shows OFF after the flip")
+outroRow.step()
+T.eq(run.loader.modOptions.widescreen_battle_intro.black_outro, true,
+  "stepping again flips back")
+T.eq(outroRow.value(), "ON", "the row shows ON again")
+run.loader.modOptions = nil
+
+-- ------- the battle exit: fade to black instead of the white return
+
+-- veil math: 0 on the battle's live frame -> 1 at the cut -> 0 back
+local oa = exports.outroAlpha
+T.check(type(oa) == "function", "outroAlpha is exported")
+T.eq(oa("out", 0, 36), 0, "fade-out starts clear")
+T.eq(oa("out", 18, 36), 0.5, "fade-out midpoint is half black")
+T.eq(oa("out", 36, 36), 1, "fade-out ends full black")
+T.eq(oa("in", 0, 36), 1, "fade-in starts full black")
+T.eq(oa("in", 36, 36), 0, "fade-in ends clear")
+T.eq(oa("out", 99, 36), 1, "overshoot clamps at black")
+T.eq(oa("in", 99, 36), 0, "overshoot clamps at clear")
+
+-- which endings get the fade: every non-lose end that goes through the
+-- engine's white battleReturn, and nothing else
+local ow = exports.outroWanted
+T.check(type(ow) == "function", "outroWanted is exported")
+T.eq(ow(nil), false, "no battle: no fade")
+T.eq(ow({}), false, "battle without a game: no fade")
+local g0 = { stack = {} }
+T.eq(ow({ result = "lose", game = g0 }), false,
+  "lose keeps the blackout warp untouched")
+T.eq(ow({ result = "win", payDay = 100, game = g0 }), false,
+  "the PAY DAY false start passes through")
+T.eq(ow({ result = "win", game = g0 }), true, "win fades to black")
+T.eq(ow({ result = "run", game = g0 }), true, "run fades to black")
+T.eq(ow({ result = "caught", game = g0 }), true, "caught fades to black")
+
+-- the fade state's own choreography: fade out over the battle's last live
+-- frame, run the engine finish at full black, re-cover the white return it
+-- pushed, fade the map up, then hand the map back the way the return's
+-- onDone would
+local overworld = { id = "overworld" }
+local function makeStack(initial)
+  local states = initial or { overworld }
+  return {
+    states = states,
+    push = function(self, s) states[#states + 1] = s end,
+    pop = function(self)
+      local s = states[#states]
+      states[#states] = nil
+      return s
+    end,
+    top = function(self) return states[#states] end,
+  }
+end
+local midpoints = 0
+local finished = 0
+local stackA = makeStack()
+local gameA = { stack = stackA, overworld = overworld }
+local battleReturn = {
+  onDone = function() finished = finished + 1 end,
+}
+local fade = exports.outroFade(gameA, {}, function()
+  midpoints = midpoints + 1
+  -- what BattleState:finish does for a non-lose result: the battle pops
+  -- itself, then the engine pushes the white battleReturn
+  stackA:pop()
+  stackA:push(battleReturn)
+end, 4, 3)
+stackA:push({ id = "battle" })
+stackA:push(fade)
+
+for _ = 1, 3 do fade:update() end
+T.eq(fade.phase, "out", "still fading the battle out")
+T.eq(stackA:top(), fade, "the fade sits on top through the fade-out")
+fade:update() -- t reaches the out frames: the cut
+T.eq(midpoints, 1, "the engine finish runs once, at full black")
+T.eq(fade.phase, "in", "the map now fades up out of black")
+T.eq(stackA:top(), fade, "re-pushed to cover the white return")
+local veil = {}
+gameA.renderer = veil
+fade:draw()
+T.check(veil.screenVeil and veil.screenVeil[1] == 0, "the veil is black")
+T.eq(veil.screenVeil[2], 1, "full black at the start of the fade-in")
+for _ = 1, 2 do fade:update() end
+T.eq(stackA:top(), fade, "still fading in")
+fade:update() -- t reaches the in frames: done
+T.eq(stackA:top(), overworld, "fade and white return both popped")
+T.eq(finished, 1, "the white return's onDone hands the map back")
+
+-- a battle that does not come back through a white return (a blackout's
+-- own warp, a second finish()): the fade ends at the cut, no fade-in
+local midpoints2 = 0
+local stackB = makeStack()
+local gameB = { stack = stackB, overworld = overworld }
+local fade2 = exports.outroFade(gameB, {}, function()
+  midpoints2 = midpoints2 + 1
+  stackB:pop() -- the battle pops; nothing replaces it
+end, 2, 2)
+stackB:push({ id = "battle" })
+stackB:push(fade2)
+fade2:update() -- t=1
+T.eq(stackB:top(), fade2, "still on top before the cut")
+fade2:update() -- t=2: the cut
+T.eq(midpoints2, 1, "midpoint still runs")
+T.eq(stackB:top(), overworld, "no white return: ends at the cut")
+
+-- another fade mod wrapped BattleState:finish too (dramatic_shape_brick's
+-- voxel battle exit): its wrap runs instead of the battle closing and
+-- pushes ITS fade on top -- the battle would sit under our fade-in and the
+-- map would never show.  Our fade pops that fade and re-drives the exit
+-- until the battle is really gone.
+local midpoints3 = 0
+local finished3 = 0
+local stackD = makeStack()
+local gameD = { stack = stackD, overworld = overworld }
+local battleD = { id = "battle" }
+local foreignFade = { phase = "out", id = "dsb exit" }
+local leaving = false
+local battleReturn3 = {
+  onDone = function() finished3 = finished3 + 1 end,
+}
+local fade3 = exports.outroFade(gameD, battleD, function()
+  midpoints3 = midpoints3 + 1
+  if not leaving then
+    -- first drive: the foreign mod's wrap pushes its own fade and returns
+    -- without closing the battle
+    leaving = true
+    stackD:push(foreignFade)
+    return
+  end
+  -- re-drive: the foreign wrap passes through to the engine finish, which
+  -- pops the battle and pushes the white battleReturn
+  stackD:pop()
+  stackD:push(battleReturn3)
+end, 2, 2)
+stackD:push(battleD)
+stackD:push(fade3)
+fade3:update() -- t=1
+fade3:update() -- t=2: the cut
+T.eq(midpoints3, 2, "the foreign fade gets popped and the exit re-driven")
+T.check(stackD:top() == fade3, "re-pushed over the white return to fade in")
+for i, s in ipairs(stackD.states) do
+  T.check(s ~= foreignFade, "the foreign fade is gone, not stacked under ours")
+end
+fade3:update() -- t=3: still fading the map in
+fade3:update() -- t=4: fade-in done
+T.eq(stackD:top(), overworld, "battle and white return both popped")
+T.eq(finished3, 1, "the white return's onDone still hands the map back")
+
+-- the finish() wrap: an ON battle pushes the fade instead of the white cut
+local BattleState = require("src.battle.BattleState")
+T.eq(BattleState.wsbBattleOutroHook, true, "the BLACK OUTRO hook is installed")
+run.loader.modOptions = { widescreen_battle_intro = { black_outro = true } }
+local stackC = makeStack()
+local gameC = { stack = stackC, overworld = overworld }
+local fakeBattle = { result = "win", game = gameC }
+BattleState.finish(fakeBattle)
+local pushed = stackC:top()
+T.check(pushed and pushed.phase == "out" and pushed.frames == 36,
+  "finish pushes the 36-frame fade over the battle")
+T.eq(fakeBattle.wsbBattleOutro, true, "the battle is flagged while the fade runs")
 run.loader.modOptions = nil
 
 -- ------- flash step math (BattleTransition_FlashScreenPalettes)

@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.5.0] - 2026-08-06
+
+### Added
+
+- BLACK OUTRO option in the OPTIONS menu (ON by default): when ON, the
+  post-battle return fades to black — the battle fades to full black over
+  about 0.6s, the screen cuts behind the black, and the map fades up out of
+  it — instead of the engine's white flash.  Losses (the blackout warp to
+  the last Pokemon Center) never used the white flash and are unchanged.
+  Off restores the engine's white return exactly.
+
+### Fixed
+
+- The black outro no longer white-flashes when another mod also replaces
+  the post-battle transition.  `dramatic_shape_brick`'s voxel battle exit
+  wraps `BattleState:finish` too, and its wrap pushed its own fade on top
+  of the battle instead of ending it — the battle froze under both fades,
+  then popped late and showed the engine's white `battleReturn` veil.  The
+  outro now pops any such foreign fade and re-drives the exit until the
+  battle has really closed behind the black, so the map still fades up out
+  of black regardless of what else wrapped the finish.
+
 ## [1.4.1] - 2026-08-05
 
 ### Fixed

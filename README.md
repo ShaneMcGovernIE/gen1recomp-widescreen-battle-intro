@@ -30,6 +30,23 @@ starts the battle music.  This mod's `transition.style` hook still governs
 the wipe they play (the FLASHLESS INTROS option included), so the
 fullscreen intro effect plays no matter what triggered the battle.
 
+## Black outro
+
+When a battle ends, the engine returns to the map through a white flash —
+a short hold, then a fade from white over roughly a third of a second.
+This mod replaces that with a slow fade to black: the battle fades to full
+black (about 0.6s), the screen cuts behind the black, and the map fades up
+out of it.  The BLACK OUTRO option in OPTIONS — ON by default — turns the
+behaviour on and off; the setting persists in options.lua like the other
+toggles.  A loss (the blackout warp to the last Pokemon Center) is
+untouched: it never used the white flash.
+
+The fade also survives other mods that replace the post-battle transition
+(such as `dramatic_shape_brick`'s voxel battle exit): if another fade has
+been pushed on top of the battle at the cut, the outro pops it and drives
+the battle's real exit behind the black, so the map still comes up out of
+black rather than a white flash.
+
 ## Try it
 
 ```sh
