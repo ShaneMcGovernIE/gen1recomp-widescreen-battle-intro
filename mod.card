@@ -1,7 +1,7 @@
 -- Sharing metadata.  Read by tooling and the manager detail pane; never by
 -- the loader's merge.
 return {
-  summary = "Extends the into-battle flash to cover the whole window on non-4:3 displays.",
+  summary = "Extends Gen 1 battle flashes across the whole window and loads safely on Crystal.",
   author = "Shane",
   tags = { "cosmetic", "rendering", "quality-of-life" },
   differences = {
@@ -11,6 +11,7 @@ return {
       "battles that used to skip the intro entirely (overworld spawns, scripted trainer fights, the catch tutorial) now play the standard transition",
       "a FLASHLESS INTROS option in the OPTIONS menu turns every battle intro into the Champion battle's flashless outward spiral",
       "a BLACK OUTRO option in the OPTIONS menu (ON by default) replaces the post-battle white flash with a slow fade to black — the battle fades out to full black, the screen cuts behind it, and the map fades back up",
+      "Crystal is an explicit target and keeps its native fullscreen Gen 2 transition",
     },
     added = {},
     known = {
@@ -19,6 +20,7 @@ return {
       "wipe and black-hold phases already filled the window via the engine's own cascade; this mod leaves them untouched",
       "with FLASHLESS INTROS on, every battle uses the same outward spiral (the Champion battle's wipe), so the per-context variety is gone while the option is set",
       "a loss still warps to the last Pokemon Center through its own transition; the blackout never used the white flash and is not affected by BLACK OUTRO",
+      "Crystal does not show the Gen 1-only options: its native transition is already fullscreen and its battle exit has no compatible Gen 1 white-return seam",
     },
   },
   credits = {},

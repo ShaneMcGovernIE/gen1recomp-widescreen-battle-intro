@@ -54,9 +54,13 @@
 -- covered, so nothing white ever shows.  lose takes the blackout path
 -- (its own warp fade), so it is never touched.
 
-local Renderer = require("src.render.Renderer")
-local Game = require("src.core.Game")
+local GameVersion = require("src.core.GameVersion")
 local Strings = require("src.core.Strings")
+
+-- Crystal is a Gen 2 lineage.  Its public transition and compose paths are
+-- different from the Gen 1 Renderer/BattleState paths below, so keep the
+-- private Gen 1 patches out of every Gen 2 boot.
+local IS_GEN2 = GameVersion.generation(GameVersion.get()) == 2
 
 -- the vanilla 3-bit wipe selection (BattleTransition.lua, from
 -- battle_transitions.asm GetBattleTransitionID_*): bit 0 trainer, bit 1
@@ -146,6 +150,7 @@ end
 -- OFF is the vanilla bits (mirror of BattleTransition.lua's vanillaStyle).
 -- Pure, so the headless suite can assert both branches.
 local function styleFor(flashless, ctx)
+  ctx = ctx or {}
   if flashless then return CHAMPION_STYLE end
   return BIT_STYLES[(ctx.trainer and 1 or 0) + (ctx.stronger and 2 or 0)
                     + (ctx.dungeon and 4 or 0)]
@@ -161,6 +166,7 @@ local OUTRO_IN_FRAMES = 36
 -- frame, 1 at the cut, back to 0 when the map is fully up.  Clamped so a
 -- caller cannot overshoot a half.
 local function outroAlpha(phase, t, frames)
+  if not frames or frames <= 0 then return phase == "out" and 1 or 0 end
   local a = (phase == "out") and (t / frames) or (1 - t / frames)
   return math.max(0, math.min(1, a))
 end
@@ -278,8 +284,10 @@ end
 local function toggleRow(getFn, setFn, id, label)
   return {
     id = id or "flashless_intros",
-    label = Strings(label or "FLASHLESS INTROS"),
-    value = function() return getFn() and Strings("ON") or Strings("OFF") end,
+    label = Strings.get(label or "FLASHLESS INTROS"),
+    value = function()
+      return getFn() and Strings.get("ON") or Strings.get("OFF")
+    end,
     step = function() setFn(not getFn()) return true end,
   }
 end
@@ -296,9 +304,8 @@ return function(mod)
   -- { shade, alpha, bands = { {x, y, w, h}, ... } } -- bands set means
   -- the overlay is the poison pulse and only the area outside the
   -- letterbox needs the veil (the canvas rect already has the square).
-  local function activeFlash(self)
-    local ok, Game = pcall(require, "src.core.Game")
-    local stack = ok and Game and Game.stack
+  local function activeFlash(self, game)
+    local stack = game and game.stack
     if not (stack and stack.states) then return nil end
     for i = #stack.states, 1, -1 do
       local state = stack.states[i]
@@ -326,6 +333,8 @@ return function(mod)
   local function optionPair(key, default)
     return {
       get = function()
+        local Game = mod.game
+        if not Game then return default end
         local loader = Game.mods
         local bucket = loader and loader.modOptions and loader.modOptions[mod.id]
         if bucket == nil then return default end
@@ -334,6 +343,8 @@ return function(mod)
         return v
       end,
       set = function(value)
+        local Game = mod.game
+        if not Game then return end
         local loader = Game.mods
         if not loader then return end
         loader.modOptions = loader.modOptions or {}
@@ -364,6 +375,7 @@ return function(mod)
   -- wrap covers every trigger; the spiral def has no flash flag, so the
   -- transition opens straight on the wipe.
   mod.hooks:wrap("transition.style", function(next, ctx)
+    if IS_GEN2 then return next(ctx) end
     if flashless.get() then return styleFor(true, ctx) end
     return next(ctx)
   end)
@@ -371,6 +383,10 @@ return function(mod)
   -- the OPTIONS rows
   mod.hooks:wrap("ui.options.rows", function(next, game, rows)
     rows = next(game, rows)
+    -- Crystal's Gen 2 transition is already fullscreen, and its battle exit
+    -- has no public white-return seam for this mod to replace.  Do not expose
+    -- toggles that silently do nothing on that engine.
+    if IS_GEN2 then return rows end
     rows[#rows + 1] = toggleRow(flashless.get, flashless.set)
     rows[#rows + 1] = toggleRow(outro.get, outro.set, OUTRO_KEY, "BLACK OUTRO")
     return rows
@@ -381,51 +397,64 @@ return function(mod)
   -- nothing left to fade -- so finish() itself is wrapped, idempotently
   -- (a hot reload re-runs this file).  lose and the PAY DAY false start
   -- pass through to the engine (outroWanted), and the toggle gates the
-  -- rest: ON pushes a fade over the battle's last live frame; the fade
-  -- runs the engine finish at full black, then fades the map up out of it.
-  local BattleState = require("src.battle.BattleState")
-  if not BattleState.wsbBattleOutroHook then
-    local inner = BattleState.finish
-    function BattleState:finish()
-      if self.wsbBattleOutro then return inner(self) end
-      if not outro.get() or not outroWanted(self) then return inner(self) end
-      self.wsbBattleOutro = true
-      local game = self.game
-      game.stack:push(outroFade(game, self, function() inner(self) end,
-                                OUTRO_OUT_FRAMES, OUTRO_IN_FRAMES))
-    end
-    BattleState.wsbBattleOutroHook = true
-  end
-
-  local originalEndFrame = Renderer.endFrame
-  function Renderer.endFrame(self, ...)
-    local result = originalEndFrame(self, ...)
-    local flash = activeFlash(self)
-    -- The engine's own screenVeil already painted the battle flash (and
-    -- the post-battle white fade) across the whole window this frame
-    -- (Renderer:endFrame).  Painting again would double-darken the flash,
-    -- so the overlay fires only when the engine drew no veil -- the poison
-    -- pulse, and old-engine / buried-transition flashes.
-    if flash and not self.screenVeil then
-      local g = love and love.graphics
-      if g and g.getDimensions and g.setColor and g.rectangle then
-        g.push("all")
-        g.setShader()
-        g.setColor(flash.shade, flash.shade, flash.shade, flash.alpha)
-        if flash.bands then
-          -- poison pulse: the overworld's in-canvas rect already darkens
-          -- the letterbox square, so only the bands around it are veiled
-          for _, band in ipairs(flash.bands) do
-            g.rectangle("fill", band[1], band[2], band[3], band[4])
-          end
-        else
-          local ww, wh = g.getDimensions()
-          g.rectangle("fill", 0, 0, ww, wh)
+  -- rest: let finish() run its level-up evolution check first, then push
+  -- the fade immediately before the actual battle teardown.  This keeps an
+  -- evolution state on the stack instead of treating it as a foreign fade.
+  if not IS_GEN2 then
+    local BattleState = require("src.battle.BattleState")
+    if not BattleState.wsbBattleOutroHook then
+      local inner = BattleState.finish
+      function BattleState:finish()
+        if self.wsbBattleOutro then return inner(self) end
+        if not outro.get() or not outroWanted(self) then return inner(self) end
+        -- Evolution.checkParty runs inside the vanilla finish path and may
+        -- leave an asynchronous evolution screen on top of the battle.  Run
+        -- that path before fading; its completion calls finish() again, at
+        -- which point the battle can be covered and closed normally.
+        if not self.evolutionsChecked then
+          self.wsbBattleOutroPending = true
+          return inner(self)
         end
-        g.pop()
+        self.wsbBattleOutroPending = nil
+        self.wsbBattleOutro = true
+        local game = self.game
+        game.stack:push(outroFade(game, self, function() inner(self) end,
+                                  OUTRO_OUT_FRAMES, OUTRO_IN_FRAMES))
       end
+      BattleState.wsbBattleOutroHook = true
     end
-    return result
+
+    local Renderer = require("src.render.Renderer")
+    local originalEndFrame = Renderer.endFrame
+    function Renderer.endFrame(self, ...)
+      local result = originalEndFrame(self, ...)
+      local flash = activeFlash(self, mod.game)
+      -- The engine's own screenVeil already painted the battle flash (and
+      -- the post-battle white fade) across the whole window this frame
+      -- (Renderer:endFrame).  Painting again would double-darken the flash,
+      -- so the overlay fires only when the engine drew no veil -- the poison
+      -- pulse, and old-engine / buried-transition flashes.
+      if flash and not self.screenVeil then
+        local g = love and love.graphics
+        if g and g.getDimensions and g.setColor and g.rectangle then
+          g.push("all")
+          g.setShader()
+          g.setColor(flash.shade, flash.shade, flash.shade, flash.alpha)
+          if flash.bands then
+            -- poison pulse: the overworld's in-canvas rect already darkens
+            -- the letterbox square, so only the bands around it are veiled
+            for _, band in ipairs(flash.bands) do
+              g.rectangle("fill", band[1], band[2], band[3], band[4])
+            end
+          else
+            local ww, wh = g.getDimensions()
+            g.rectangle("fill", 0, 0, ww, wh)
+          end
+          g.pop()
+        end
+      end
+      return result
+    end
   end
 
   -- Script-started battles -- the overworld spawn mod's touch-to-battle

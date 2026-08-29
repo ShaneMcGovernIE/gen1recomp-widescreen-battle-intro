@@ -254,12 +254,45 @@ T.eq(BattleState.wsbBattleOutroHook, true, "the BLACK OUTRO hook is installed")
 run.loader.modOptions = { widescreen_battle_intro = { black_outro = true } }
 local stackC = makeStack()
 local gameC = { stack = stackC, overworld = overworld }
-local fakeBattle = { result = "win", game = gameC }
+local fakeBattle = setmetatable({ result = "win", game = gameC }, BattleState)
 BattleState.finish(fakeBattle)
 local pushed = stackC:top()
 T.check(pushed and pushed.phase == "out" and pushed.frames == 36,
   "finish pushes the 36-frame fade over the battle")
 T.eq(fakeBattle.wsbBattleOutro, true, "the battle is flagged while the fade runs")
+
+-- Level-up evolution belongs to BattleState:finish.  The black outro must
+-- let that check push and complete its evolution screen before it starts
+-- fading; otherwise the fade's foreign-state cleanup mistakes the evolution
+-- state for another fade and pops it.
+local originalEvolution = package.loaded["src.pokemon.Evolution"]
+local evolutionDone
+local evolutionState = { id = "evolution" }
+package.loaded["src.pokemon.Evolution"] = {
+  checkParty = function(game, onDone)
+    evolutionDone = onDone
+    game.stack:push(evolutionState)
+    return 1
+  end,
+}
+local stackE = makeStack()
+local gameE = { stack = stackE, overworld = overworld }
+local evolvingBattle = setmetatable({ result = "win", game = gameE }, BattleState)
+stackE:push(evolvingBattle)
+BattleState.finish(evolvingBattle)
+T.check(stackE:top() == evolutionState,
+  "black outro leaves the level-up evolution state active")
+T.eq(evolvingBattle.wsbBattleOutroPending, true,
+  "black outro waits for evolution before starting its fade")
+if evolutionDone then
+  stackE:pop()
+  evolutionDone()
+  local evolutionFade = stackE:top()
+  T.check(evolutionFade and evolutionFade.phase == "out"
+          and evolutionFade.frames == 36,
+    "black outro starts after level-up evolution completes")
+end
+package.loaded["src.pokemon.Evolution"] = originalEvolution
 run.loader.modOptions = nil
 
 -- ------- flash step math (BattleTransition_FlashScreenPalettes)
@@ -292,8 +325,7 @@ expect(24, 0, 1 / 3, "the 24-frame cycle wraps")
 -- ------- the overlay is state-driven: it reads the live stack
 
 local function withStack(states)
-  package.loaded["src.core.Game"] = { stack = { states = states } }
-  return exports.activeFlash()
+  return exports.activeFlash(nil, { stack = { states = states } })
 end
 local function transition(t, phase)
   return { t = t, phase = phase, wipeLen = 40 }
@@ -326,7 +358,6 @@ T.eq(withStack({ { phase = "out", t = 5 } }), nil,
 T.eq(withStack({ { t = 3, frames = 7 } }), nil,
   "the white flash does not paint the battle flash")
 
-package.loaded["src.core.Game"] = nil
 T.eq(exports.activeFlash(), nil, "no game module, no overlay")
 
 -- ------- the out-of-battle poison pulse gets the same veil
@@ -387,10 +418,10 @@ love.graphics.getPixelDimensions = savedPx
 
 -- a poisoning overworld on the stack yields the banded poison veil
 local function withPoison(poisonFlash, over)
-  package.loaded["src.core.Game"] = {
+  local game = {
     stack = { states = over or { { poisonFlash = poisonFlash } } },
   }
-  return exports.activeFlash(renderer)
+  return exports.activeFlash(renderer, game)
 end
 local pflash = withPoison(6)
 T.check(pflash ~= nil and pflash.shade == 0 and pflash.alpha == 0.45,
@@ -406,7 +437,6 @@ local intro = withPoison(nil, {
 })
 T.check(intro ~= nil and intro.shade == 0, "battle flash wins over poison")
 T.eq(intro.bands, nil, "battle flash is full-window, not banded")
-package.loaded["src.core.Game"] = nil
 
 run.release()
 T.finish("widescreen_battle_intro")

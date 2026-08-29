@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.0] - 2026-08-24
+
+### Added
+
+- Crystal is now an explicit target in the manifest and has a ROM-free
+  Gen 2 load regression test.
+
+### Fixed
+
+- Gen 2 no longer installs the Gen 1 `Renderer.endFrame` and
+  `BattleState:finish` monkeypatches. Crystal already renders its transition
+  fullscreen and exits battles through `finishBattle`, so those patches could
+  never provide the advertised behavior there.
+- Crystal no longer receives an invalid Gen 1 `spiralout` transition or
+  options rows whose Gen 1-only effects cannot run on the Gen 2 engine.
+
 ## [1.5.0] - 2026-08-06
 
 ### Added
