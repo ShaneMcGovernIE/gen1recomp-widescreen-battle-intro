@@ -1,5 +1,10 @@
 # Widescreen Battle Intro
 
+This mod targets Red, Blue, Yellow and Crystal.  The visual options below
+apply to Gen 1.  Crystal loads safely, but keeps its native Gen 2 transition:
+Crystal already renders the battle flash across the full window, and its
+battle exit has no compatible Gen 1 white-return seam for BLACK OUTRO.
+
 On windows wider than 4:3, the flash that opens the battle intro for wild
 encounters — and for battles against a foe at least 3 levels above your
 lead — used to play inside a centered 160x144 square; this mod extends that
@@ -22,7 +27,7 @@ options.lua, so it survives NEW GAME, CONTINUE and quitting.
 
 ## Every battle trigger
 
-Every battle trigger — overworld spawns (mods that run `start_battle
+On Gen 1, every battle trigger — overworld spawns (mods that run `start_battle
 "wild"`, like Wilds of Kanto), scripted trainer fights (the rivals, Jessie
 & James) and the Viridian catch tutorial — routes through the engine's
 `OverworldState:pushBattle`, which pushes the standard transition and
@@ -32,7 +37,7 @@ fullscreen intro effect plays no matter what triggered the battle.
 
 ## Black outro
 
-When a battle ends, the engine returns to the map through a white flash —
+On Gen 1, when a battle ends, the engine returns to the map through a white flash —
 a short hold, then a fade from white over roughly a third of a second.
 This mod replaces that with a slow fade to black: the battle fades to full
 black (about 0.6s), the screen cuts behind the black, and the map fades up
@@ -82,4 +87,5 @@ letterbox), keeping the flash uniform across the window.
 Targets the battle-transition code present since 0.1.53.  On a 4:3 window
 the overlay is the same shade as the letterbox square, so vanilla is
 unchanged; the wipe and black-hold phases are left to the engine's own
-fullscreen cascade.
+fullscreen cascade. Crystal uses the Gen 2 renderer and is covered by the
+native fullscreen transition; its unsupported Gen 1-only options are hidden.

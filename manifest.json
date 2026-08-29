@@ -1,8 +1,9 @@
 {
   "id": "widescreen_battle_intro",
   "name": "Widescreen Battle Intro",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "api": 2,
+  "games": ["gen1", "crystal"],
   "entry": "main.lua",
   "profile": "content",
   "category": "VISUAL",
@@ -12,5 +13,5 @@
   "conflicts": [],
   "permissions": ["engine_internals"],
   "github": "ShaneMcGovernIE/gen1recomp-widescreen-battle-intro",
-  "description": "Extends the battle intro's flash effect (wild encounters and stronger foes) across the whole window, so on non-4:3 displays it no longer plays inside a centered 4:3 square. Also extends the out-of-battle poison damage pulse to the whole window. Adds a FLASHLESS INTROS option that plays every battle intro as the Champion battle's flashless outward spiral, and a BLACK OUTRO option (ON by default) that replaces the post-battle white flash with a slow fade to black."
+  "description": "For Gen 1, extends battle intro flashes and poison pulses across the whole window and adds FLASHLESS INTROS plus BLACK OUTRO options. Crystal is supported as a safe Gen 2 load; its native fullscreen transition remains unchanged because its engine has no compatible Gen 1 outro seam."
 }
