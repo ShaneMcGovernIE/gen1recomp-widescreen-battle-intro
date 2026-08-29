@@ -15,6 +15,8 @@
   never provide the advertised behavior there.
 - Crystal no longer receives an invalid Gen 1 `spiralout` transition or
   options rows whose Gen 1-only effects cannot run on the Gen 2 engine.
+- Battle-earned level-up evolutions now complete before BLACK OUTRO starts;
+  the previous ordering could dismiss the evolution screen at battle end.
 
 ## [1.5.0] - 2026-08-06
 
